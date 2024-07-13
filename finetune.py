@@ -8,69 +8,54 @@ import transformers
 from datasets import load_dataset
 from typing import List, Optional, Union
 
-"""
-Unused imports:
-import torch.nn as nn
-import bitsandbytes as bnb
-"""
 sys.path.append(os.path.join(os.getcwd(), "peft/src/"))
 from peft import (  # noqa: E402
     LoraConfig,
-    BottleneckConfig,
-    PrefixTuningConfig,
     get_peft_model,
     get_peft_model_state_dict,
-    prepare_model_for_int8_training,
+    prepare_model_for_kbit_training,
     set_peft_model_state_dict,
 )
-from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer, AutoModel  # noqa: F402
+
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+)  # noqa: F402
 
 
 def train(
-        # model/data params
-        base_model: str = "",  # the only required argument
-        data_path: str = "yahma/alpaca-cleaned",
-        output_dir: str = "./lora-alpaca",
-        adapter_name: str = "lora",
-        load_8bit : bool = False,
-        # training hyperparams
-        batch_size: int = 128,
-        micro_batch_size: int = 4,
-        num_epochs: int = 3,
-        learning_rate: float = 3e-4,
-        cutoff_len: int = 256,
-        val_set_size: int = 2000,
-        use_gradient_checkpointing: bool = False,
-        eval_step: int = 200,
-        save_step: int = 200,
-        # lora hyperparams
-        #lora_r: int = 8,
-        #lora_alpha: int = 16,
-        lora_r: int = 32,
-        lora_alpha: int = 64,
-        #lora_dropout: float = 0.05,
-        lora_dropout: float = 0.2,
-        lr_scheduler_type="cosine",  # Set the learning rate scheduler to cosine
-        lora_target_modules: List[str] = None,
-        # bottleneck adapter hyperparams
-        bottleneck_size: int = 256,
-        non_linearity: str = "tanh",
-        adapter_dropout: float = 0.0,
-        use_parallel_adapter: bool = False,
-        use_adapterp: bool = False,
-        target_modules: List[str] = None,
-        scaling: Union[float, str] = 1.0,
-        # prefix tuning hyperparams
-        num_virtual_tokens: int = 30,
-        # llm hyperparams
-        train_on_inputs: bool = True,  # if False, masks out inputs in loss
-        group_by_length: bool = False,  # faster, but produces an odd training loss curve
-        # wandb params
-        wandb_project: str = "inception_lora",
-        wandb_run_name: str = "",
-        wandb_watch: str = "all",  # options: false | gradients | all
-        wandb_log_model: str = "true",  # options: false | true
-        resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
+    # model/data params
+    base_model: str = "",  # the only required argument
+    data_path: str = "ft-training_set/math_50k.json",
+    output_dir: str = "./trained_models/llama/math",
+    adapter_name: str = "lora",
+    load_8bit: bool = False,
+    # training hyperparams
+    batch_size: int = 128,
+    micro_batch_size: int = 4,
+    num_epochs: int = 3,
+    learning_rate: float = 1e-4,
+    cutoff_len: int = 256,
+    val_set_size: int = 2000,
+    use_gradient_checkpointing: bool = False,
+    eval_step: int = 200,
+    save_step: int = 200,
+    # lora hyperparams
+    lora_r: int = 32,
+    lora_alpha: int = 64,
+    lora_dropout: float = 0.2,
+    lr_scheduler_type="cosine",  # Set the learning rate scheduler to cosine
+    lora_target_modules: List[str] = None,
+
+    # llm hyperparams
+    train_on_inputs: bool = True,  # if False, masks out inputs in loss
+    group_by_length: bool = False,  # faster, but produces an odd training loss curve
+    # wandb params
+    wandb_project: str = "inception_lora",
+    wandb_run_name: str = "",
+    wandb_watch: str = "all",  # options: false | gradients | all
+    wandb_log_model: str = "true",  # options: false | true
+    resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
 ):
     print(
         f"Finetuning model with params:\n"
@@ -84,20 +69,16 @@ def train(
         f"cutoff_len: {cutoff_len}\n"
         f"val_set_size: {val_set_size}\n"
         f"use_gradient_checkpointing: {use_gradient_checkpointing}\n"
+
+        f"adapter_name: {adapter_name}\n"
         f"lora_r: {lora_r}\n"
         f"lora_alpha: {lora_alpha}\n"
         f"lora_dropout: {lora_dropout}\n"
         f"lr_scheduler_type: {lr_scheduler_type}\n"
         f"lora_target_modules: {lora_target_modules}\n"
-        f"bottleneck_size: {bottleneck_size}\n"
-        f"non_linearity: {non_linearity}\n"
-        f"adapter_dropout: {adapter_dropout}\n"
-        f"use_parallel_adapter: {use_parallel_adapter}\n"
-        f"use_adapterp: {use_adapterp}\n"
+
         f"train_on_inputs: {train_on_inputs}\n"
-        f"scaling: {scaling}\n"
-        f"adapter_name: {adapter_name}\n"
-        f"target_modules: {target_modules}\n"
+
         f"group_by_length: {group_by_length}\n"
         f"wandb_project: {wandb_project}\n"
         f"wandb_run_name: {wandb_run_name}\n"
@@ -111,15 +92,18 @@ def train(
     gradient_accumulation_steps = batch_size // micro_batch_size
 
     device_map = "auto"
+    torch_dtype=torch.bfloat16
+
     world_size = int(os.environ.get("WORLD_SIZE", 1))
-    #ddp = world_size != 1
-    #if ddp:
-        #device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
-        #gradient_accumulation_steps = gradient_accumulation_steps // world_size
+    ddp = world_size != 1
+    if ddp:
+        device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
+        gradient_accumulation_steps = gradient_accumulation_steps // world_size
+
 
     # Check if parameter passed or if set within environ
     use_wandb = len(wandb_project) > 0 or (
-            "WANDB_PROJECT" in os.environ and len(os.environ["WANDB_PROJECT"]) > 0
+        "WANDB_PROJECT" in os.environ and len(os.environ["WANDB_PROJECT"]) > 0
     )
     # Only overwrite environ if wandb param passed
     if len(wandb_project) > 0:
@@ -129,28 +113,17 @@ def train(
     if len(wandb_log_model) > 0:
         os.environ["WANDB_LOG_MODEL"] = wandb_log_model
 
-    if load_8bit:
-        model = AutoModelForCausalLM.from_pretrained(
-            base_model,
-            load_in_8bit=load_8bit,
-            torch_dtype=torch.float16,
-            device_map=device_map,
-            trust_remote_code=True,
-        )
-    else:
-        model = AutoModelForCausalLM.from_pretrained(
-            base_model,
-            load_in_8bit=False,
-            torch_dtype=torch.float16,
-            #device_map={"": int(os.environ.get("LOCAL_RANK") or 0)},
-            device_map='auto',
-            trust_remote_code=True,
-        )
-
-    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
-    tokenizer.pad_token_id = (
-        0  # unk. we want this to be different from the eos token
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model,
+        load_in_8bit=load_8bit,
+        torch_dtype=torch_dtype,
+        #device_map="auto",
+        device_map=device_map,
+        trust_remote_code=True,
+        attn_implementation='eager' if 'gemma' in base_model.lower() else 'sdpa',
     )
+    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
+    tokenizer.pad_token_id = 0  # unk. we want this to be different from the eos token
     tokenizer.padding_side = "left"  # Allow batched inference
 
     def tokenize(prompt, add_eos_token=True):
@@ -164,9 +137,9 @@ def train(
             return_tensors=None,
         )
         if (
-                result["input_ids"][-1] != tokenizer.eos_token_id
-                and len(result["input_ids"]) < cutoff_len
-                and add_eos_token
+            result["input_ids"][-1] != tokenizer.eos_token_id
+            and len(result["input_ids"]) < cutoff_len
+            and add_eos_token
         ):
             result["input_ids"].append(tokenizer.eos_token_id)
             if "chatglm" not in base_model:
@@ -188,47 +161,27 @@ def train(
             user_prompt_len = len(tokenized_user_prompt["input_ids"])
 
             tokenized_full_prompt["labels"] = [
-                                                  -100
-                                              ] * user_prompt_len + tokenized_full_prompt["labels"][
-                                                                    user_prompt_len:
-                                                                    ]  # could be sped up, probably
+                -100
+            ] * user_prompt_len + tokenized_full_prompt["labels"][
+                user_prompt_len:
+            ]  # could be sped up, probably
         return tokenized_full_prompt
 
-    model = prepare_model_for_int8_training(model, use_gradient_checkpointing=use_gradient_checkpointing)
-    if adapter_name == "lora":
-        config = LoraConfig(
-            r=lora_r,
-            lora_alpha=lora_alpha,
-            target_modules=target_modules,
-            lora_dropout=lora_dropout,
-            #bias="none",
-            task_type="CAUSAL_LM",
-        )
-    elif adapter_name == "bottleneck":
-        config = BottleneckConfig(
-            bottleneck_size=bottleneck_size,
-            non_linearity=non_linearity,
-            adapter_dropout=adapter_dropout,
-            use_parallel_adapter=use_parallel_adapter,
-            use_adapterp=use_adapterp,
-            target_modules=target_modules,
-            scaling=scaling,
-            #bias="none",
-            task_type="CAUSAL_LM",
-        )
-    elif adapter_name == "prefix-tuning":
-        config = PrefixTuningConfig(
-            num_virtual_tokens=num_virtual_tokens,
-            task_type="CAUSAL_LM",
-        )
-    model = get_peft_model(model, config)
-    if adapter_name == "prefix-tuning":
-        model.to('cuda')
+    #model = prepare_model_for_kbit_training(
+    #    model, use_gradient_checkpointing=use_gradient_checkpointing
+    #)
+    config = LoraConfig(
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        target_modules=lora_target_modules,
+        lora_dropout=lora_dropout,
+        #bias="lora_only",
+        bias="none",
+        task_type="CAUSAL_LM"
+    )
 
-    if data_path.endswith(".json"):  # todo: support jsonl
-        data = load_dataset("json", data_files=data_path)
-    else:
-        data = load_dataset(data_path)
+    model = get_peft_model(model, config)
+    data = load_dataset("json", data_files=data_path)
 
     if resume_from_checkpoint:
         # Check the available weights and load them
@@ -239,9 +192,7 @@ def train(
             checkpoint_name = os.path.join(
                 resume_from_checkpoint, "adapter_model.bin"
             )  # only LoRA model - LoRA config above has to fit
-            resume_from_checkpoint = (
-                False  # So the trainer won't try loading its state
-            )
+            resume_from_checkpoint = False  # So the trainer won't try loading its state
         # The two files above have a different name depending on how they were saved, but are actually the same.
         if os.path.exists(checkpoint_name):
             print(f"Restarting from {checkpoint_name}")
@@ -256,20 +207,16 @@ def train(
         train_val = data["train"].train_test_split(
             test_size=val_set_size, shuffle=True, seed=42
         )
-        train_data = (
-            train_val["train"].shuffle().map(generate_and_tokenize_prompt)
-        )
-        val_data = (
-            train_val["test"].shuffle().map(generate_and_tokenize_prompt)
-        )
+        train_data = train_val["train"].shuffle().map(generate_and_tokenize_prompt)
+        val_data = train_val["test"].shuffle().map(generate_and_tokenize_prompt)
     else:
         train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
         val_data = None
 
-    #if not ddp and torch.cuda.device_count() > 1:
+    if not ddp and torch.cuda.device_count() > 1:
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
-        #model.is_parallelizable = True
-        #model.model_parallel = True
+        model.is_parallelizable = True
+        model.model_parallel = True
 
     trainer = transformers.Trainer(
         model=model,
@@ -281,9 +228,10 @@ def train(
             warmup_steps=100,
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,
-            lr_scheduler_type=lr_scheduler_type,  # Set the learning rate scheduler to cosine
-            fp16=True,
-            logging_steps=10,
+            lr_scheduler_type=lr_scheduler_type,  
+            bf16=True,
+            logging_steps=20,
+            ddp_find_unused_parameters=False if ddp else None,
             optim="adamw_torch",
             eval_strategy="steps" if val_set_size > 0 else "no",
             save_strategy="steps",
@@ -294,7 +242,10 @@ def train(
             load_best_model_at_end=True if val_set_size > 0 else False,
             group_by_length=group_by_length,
             report_to="wandb" if use_wandb else None,
-            run_name=wandb_run_name if use_wandb else None,
+            run_name=wandb_run_name if use_wandb else None, 
+            hub_model_id=f"{base_model.split('/')[-1]}-{adapter_name}-{output_dir.split('/')[-1]}",
+            hub_token = get_huggingface_token(),
+            push_to_hub=True,
         ),
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
@@ -304,22 +255,20 @@ def train(
 
     old_state_dict = model.state_dict
     model.state_dict = (
-        lambda self, *_, **__: get_peft_model_state_dict(
-            self, old_state_dict()
-        )
+        lambda self, *_, **__: get_peft_model_state_dict(self, old_state_dict())
     ).__get__(model, type(model))
 
-    if torch.__version__ >= "2" and sys.platform != "win32":
-        model = torch.compile(model)
-
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
-
     model.save_pretrained(output_dir)
+    print("\n If there's a warning about missing keys above, please disregard :)")
 
-    print(
-        "\n If there's a warning about missing keys above, please disregard :)"
-    )
-
+def get_huggingface_token(config_file_path:str='config.yaml'):
+    import yaml
+    token = None
+    with open(config_file_path, "r") as config_file:
+        config = yaml.safe_load(config_file)
+        token = config["huggingface"]["token"]
+    return token
 
 def generate_prompt(data_point):
     # sorry about the formatting disaster gotta move fast
@@ -333,7 +282,7 @@ def generate_prompt(data_point):
                 {data_point["input"]}
                 
                 ### Response:
-                {data_point["output"]}""" # noqa: E501
+                {data_point["output"]}"""  # noqa: E501
     else:
         return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.  
 
@@ -341,8 +290,7 @@ def generate_prompt(data_point):
                 {data_point["instruction"]}
                 
                 ### Response:
-                {data_point["output"]}""" # noqa: E501
-
+                {data_point["output"]}"""  # noqa: E501
 
 if __name__ == "__main__":
     fire.Fire(train)

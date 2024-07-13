@@ -1,0 +1,3 @@
+huggingface:
+  token: <HF API KEY> 
+  username: <HF USER NAME> 

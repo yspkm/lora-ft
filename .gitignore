@@ -162,6 +162,7 @@ cython_debug/
 #.idea/
 
 config.yaml
-trained_model/
+trained_models/
 wandb/
 experiment/
+old/
