@@ -30,7 +30,7 @@ TRAINING_CONFIG = {
     "num_epochs": 3,
     "learning_rate": 1e-4,
     "cutoff_len": 256,
-    "val_set_size": 2048,
+    "val_set_size": 128,
     "adapter_name": "lora",
     "lr_scheduler_type": "cosine",
     "lora_r": 32,
