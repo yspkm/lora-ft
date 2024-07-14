@@ -243,7 +243,7 @@ def train(
             run_name=wandb_run_name if use_wandb else None,
             hub_model_id=f"{base_model.split('/')[-1]}-{adapter_name}-{output_dir.split('/')[-1]}",
             hub_token=get_huggingface_token(),
-            eval_on_start=True,
+            #eval_on_start=True,
             push_to_hub=True,
         ),
         data_collator=transformers.DataCollatorForSeq2Seq(
