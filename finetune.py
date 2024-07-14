@@ -40,13 +40,13 @@ def train(
     use_gradient_checkpointing: bool = False,
     eval_step: int = 200,
     save_step: int = 200,
+    logging_steps: int = 20,
     # lora hyperparams
     lora_r: int = 32,
     lora_alpha: int = 64,
     lora_dropout: float = 0.2,
     lr_scheduler_type="cosine",  # Set the learning rate scheduler to cosine
     lora_target_modules: List[str] = None,
-
     # llm hyperparams
     train_on_inputs: bool = True,  # if False, masks out inputs in loss
     group_by_length: bool = False,  # faster, but produces an odd training loss curve
@@ -54,7 +54,7 @@ def train(
     wandb_project: str = "inception_lora",
     wandb_run_name: str = "",
     wandb_watch: str = "all",  # options: false | gradients | all
-    wandb_log_model: str = "true",  # options: false | true
+    wandb_log_model: str = "false",  # options: false | true
     resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
 ):
     print(
@@ -69,16 +69,13 @@ def train(
         f"cutoff_len: {cutoff_len}\n"
         f"val_set_size: {val_set_size}\n"
         f"use_gradient_checkpointing: {use_gradient_checkpointing}\n"
-
         f"adapter_name: {adapter_name}\n"
         f"lora_r: {lora_r}\n"
         f"lora_alpha: {lora_alpha}\n"
         f"lora_dropout: {lora_dropout}\n"
         f"lr_scheduler_type: {lr_scheduler_type}\n"
         f"lora_target_modules: {lora_target_modules}\n"
-
         f"train_on_inputs: {train_on_inputs}\n"
-
         f"group_by_length: {group_by_length}\n"
         f"wandb_project: {wandb_project}\n"
         f"wandb_run_name: {wandb_run_name}\n"
@@ -92,7 +89,7 @@ def train(
     gradient_accumulation_steps = batch_size // micro_batch_size
 
     device_map = "auto"
-    torch_dtype=torch.bfloat16
+    torch_dtype = torch.bfloat16
 
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     ddp = world_size != 1
@@ -100,12 +97,12 @@ def train(
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
         gradient_accumulation_steps = gradient_accumulation_steps // world_size
 
-
     # Check if parameter passed or if set within environ
     use_wandb = len(wandb_project) > 0 or (
         "WANDB_PROJECT" in os.environ and len(os.environ["WANDB_PROJECT"]) > 0
     )
     # Only overwrite environ if wandb param passed
+
     if len(wandb_project) > 0:
         os.environ["WANDB_PROJECT"] = wandb_project
     if len(wandb_watch) > 0:
@@ -117,10 +114,10 @@ def train(
         base_model,
         load_in_8bit=load_8bit,
         torch_dtype=torch_dtype,
-        #device_map="auto",
+        # device_map="auto",
         device_map=device_map,
         trust_remote_code=True,
-        attn_implementation='eager' if 'gemma' in base_model.lower() else 'sdpa',
+        attn_implementation="eager" if "gemma" in base_model.lower() else "sdpa",
     )
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
     tokenizer.pad_token_id = 0  # unk. we want this to be different from the eos token
@@ -167,17 +164,17 @@ def train(
             ]  # could be sped up, probably
         return tokenized_full_prompt
 
-    #model = prepare_model_for_kbit_training(
+    # model = prepare_model_for_kbit_training(
     #    model, use_gradient_checkpointing=use_gradient_checkpointing
-    #)
+    # )
     config = LoraConfig(
         r=lora_r,
         lora_alpha=lora_alpha,
         target_modules=lora_target_modules,
         lora_dropout=lora_dropout,
-        #bias="lora_only",
+        # bias="lora_only",
         bias="none",
-        task_type="CAUSAL_LM"
+        task_type="CAUSAL_LM",
     )
 
     model = get_peft_model(model, config)
@@ -222,15 +219,16 @@ def train(
         model=model,
         train_dataset=train_data,
         eval_dataset=val_data,
+        compute_metrics=compute_metrics,
         args=transformers.TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
             warmup_steps=100,
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,
-            lr_scheduler_type=lr_scheduler_type,  
+            lr_scheduler_type=lr_scheduler_type,
             bf16=True,
-            logging_steps=20,
+            logging_steps=logging_steps,
             ddp_find_unused_parameters=False if ddp else None,
             optim="adamw_torch",
             eval_strategy="steps" if val_set_size > 0 else "no",
@@ -242,9 +240,10 @@ def train(
             load_best_model_at_end=True if val_set_size > 0 else False,
             group_by_length=group_by_length,
             report_to="wandb" if use_wandb else None,
-            run_name=wandb_run_name if use_wandb else None, 
+            run_name=wandb_run_name if use_wandb else None,
             hub_model_id=f"{base_model.split('/')[-1]}-{adapter_name}-{output_dir.split('/')[-1]}",
-            hub_token = get_huggingface_token(),
+            hub_token=get_huggingface_token(),
+            #eval_on_start=True,
             push_to_hub=True,
         ),
         data_collator=transformers.DataCollatorForSeq2Seq(
@@ -260,15 +259,42 @@ def train(
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     model.save_pretrained(output_dir)
+
+    trainer.push_to_hub(
+        commit_message="Training completed!",
+        # repo_name=f"{base_model.split('/')[-1]}-{adapter_name}-{output_dir.split('/')[-1]}",
+        # use_auth_token=get_huggingface_token(),
+    )
     print("\n If there's a warning about missing keys above, please disregard :)")
 
-def get_huggingface_token(config_file_path:str='config.yaml'):
+
+def compute_metrics(eval_pred):
+    logits, labels = eval_pred
+
+    shifted_labels = labels[:, 1:].reshape(-1)
+    shifted_logits = logits[:, :-1, :].reshape(-1, logits.shape[-1])
+
+    mask = shifted_labels != -100
+    shifted_labels = shifted_labels[mask]
+    shifted_logits = shifted_logits[mask]
+
+    loss_fct = torch.nn.CrossEntropyLoss()
+    loss = loss_fct(torch.tensor(shifted_logits), torch.tensor(shifted_labels))
+
+    perplexity = torch.exp(loss)
+
+    return {"loss": loss.item(), "perplexity": perplexity.item()}
+
+
+def get_huggingface_token(config_file_path: str = "config.yaml"):
     import yaml
+
     token = None
     with open(config_file_path, "r") as config_file:
         config = yaml.safe_load(config_file)
         token = config["huggingface"]["token"]
     return token
+
 
 def generate_prompt(data_point):
     # sorry about the formatting disaster gotta move fast

@@ -11,7 +11,7 @@ import argparse
 import torch
 
 sys.path.append(os.path.join(os.getcwd(), "peft/src/"))
-from peft import PeftModel 
+from peft import PeftModel
 from transformers import (
     GenerationConfig,
     AutoModelForCausalLM,
@@ -40,8 +40,8 @@ def main():
     dataset = load_dataset("json", data_files=f"dataset/{args.dataset}/test.json")
     tokenizer, peft_model = load_model(args)
 
-    #tokenizer.pad_token_id = tokenizer.unk_token_id
-    #tokenizer.padding_side = "left"
+    # tokenizer.pad_token_id = tokenizer.unk_token_id
+    # tokenizer.padding_side = "left"
     generation_config = GenerationConfig(
         temperature=0.1,
         top_p=0.75,
@@ -51,14 +51,14 @@ def main():
     )
 
     text_generator = pipeline(
-        task="text-generation", 
-        model=peft_model, 
-        tokenizer=tokenizer, 
+        task="text-generation",
+        model=peft_model,
+        tokenizer=tokenizer,
         max_new_tokens=256,
         truncation=True,
         generation_config=generation_config,
         pad_token_id=tokenizer.eos_token_id,
-        torch_dtype=torch.bfloat16
+        torch_dtype=torch.bfloat16,
     )
 
     miss = 0.001
