@@ -3,41 +3,44 @@ import queue
 import subprocess
 
 MODELS = {
-    "llama_8b": {
-        "base_model": "meta-llama/Meta-Llama-3-8B-Instruct",
+
+    # "mistral_7b": {
+    #     #"base_model": "mistralai/Mistral-7B-Instruct-v0.3",
+    #     "base_model": "mistralai/Mistral-7B-v0.3",
+    #     "lora_weights": {
+    #         "math": "trained_models/mistral/math",
+    #         "commonsense": "trained_models/mistral/commonsense",
+    #     },
+    # },
+    # "llama_8b": {
+    #     #"base_model": "meta-llama/Meta-Llama-3-8B-Instruct",
+    #     "base_model": "meta-llama/Meta-Llama-3-8B",
+    #     "lora_weights": {
+    #         "math": "trained_models/llama/math",
+    #         "commonsense": "trained_models/llama/commonsense",
+    #     },
+    # },
+    "gemma_2b": {
+        #"base_model": "meta-llama/Meta-Llama-3-8B-Instruct",
+        "base_model": "google/gemma-2b-it",
         "lora_weights": {
-            "math": "trained_models/llama/math",
-            "commonsense": "trained_models/llama/commonsense",
+            "math": "trained_models/gemma2b/math",
+            #"commonsense": "trained_models/llama/commonsense",
         },
     },
-    "gemma_9b": {
-        "base_model": "google/gemma-2-9b-it",
-        "lora_weights": {
-            "math": "trained_models/gemma/math",
-            "commonsense": "trained_models/gemma/commonsense",
-        },
-    },
-    "mistral_7b": {
-        "base_model": "mistralai/Mistral-7B-Instruct-v0.3",
-        "lora_weights": {
-            "math": "trained_models/mistral/math",
-            "commonsense": "trained_models/mistral/commonsense",
-        },
-    },
+    # "gemma_9b": {
+    #     "base_model": "google/gemma-2-9b-it",
+    #     "lora_weights": {
+    #         "math": "trained_models/gemma/math",
+    #         "commonsense": "trained_models/gemma/commonsense",
+    #     },
+    # },
 }
 
 datasets = {
-    "math": ["AQuA", "AddSub", "MultiArith", "SingleEq", "gsm8k", "SVAMP"],
-    "commonsense": [
-        "boolq",
-        "piqa",
-        "social_i_qa",
-        "hellaswag",
-        "winogrande",
-        "ARC-Challenge",
-        "ARC-Easy",
-        "openbookqa",
-    ],
+    #"math": ["AQuA", "AddSub", "MultiArith", "SingleEq", "gsm8k", "SVAMP"],
+    #"commonsense": ["AQuA", "boolq","piqa","social_i_qa","hellaswag","winogrande","ARC-Challenge","ARC-Easy","openbookqa",],
+    "math": ["AddSub", "MultiArith", "SingleEq", "gsm8k", "SVAMP"],
 }
 gpus = [0, 1, 2, 3]
 tasks_queue = queue.Queue()
@@ -51,7 +54,7 @@ def evaluate(model_name, dataset_type, dataset, gpu):
 
     print(f"Evaluating model {model_name} on dataset {dataset} using GPU {gpu}")
 
-    command = f"CUDA_VISIBLE_DEVICES={gpu} python3 evaluate_math.py \
+    command = f"CUDA_VISIBLE_DEVICES={gpu} python3 evaluate_{dataset_type}.py \
                --model {model_name} \
                --adapter LoRA \
                --dataset {dataset} \

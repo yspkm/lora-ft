@@ -39,6 +39,7 @@ def main():
 
     dataset = load_dataset("json", data_files=f"dataset/{args.dataset}/test.json")
     tokenizer, peft_model = load_model(args)
+    #peft_model.eval()
 
     generation_config = GenerationConfig(
         #temperature=0.1,
@@ -47,12 +48,12 @@ def main():
         #do_sample=True,
         #num_beams=5,
     )
-
     text_generator = pipeline(
         task="text-generation", 
         model=peft_model, 
         tokenizer=tokenizer, 
-        max_new_tokens=32,
+        #max_new_tokens= 256 if "AQuA" in args.dataset else 32,
+        max_new_tokens= 32,
         truncation=True,
         generation_config=generation_config,
         pad_token_id=tokenizer.eos_token_id,
@@ -134,7 +135,7 @@ def create_dir(dir_path):
 
 def generate_prompt(instruction, input=None):
     if input:
-        return f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request. At the beginning of your response, provide the answer in a format such as 'the correct answer is solution1.'
 
                 ### Instruction:
                 {instruction}
@@ -145,7 +146,7 @@ def generate_prompt(instruction, input=None):
                 ### Response:
                 """  # noqa: E501
     else:
-        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request. 
+        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request. At the beginning of your response, provide the answer in a format such as 'the correct answer is solution1.'
 
                 ### Instruction:
                 {instruction}
@@ -167,6 +168,7 @@ def parse_args():
             "ARC-Challenge",
             "ARC-Easy",
             "openbookqa",
+            "AQuA", # 수학이긴하지만 객관식이므로
         ],
         required=True,
     )
@@ -263,11 +265,13 @@ def load_instruction(args) -> str:
 
 def extract_answer(args, sentence: str) -> float:
     dataset = args.dataset
-    sentence_ = sentence.strip()
+    sentence_ = sentence.strip().lower()
     if dataset == "boolq":
         pred_answers = re.findall(r"true|false", sentence_)
     elif dataset == "piqa":
         pred_answers = re.findall(r"solution1|solution2", sentence_)
+    elif dataset == "AQuA":
+        pred_answers = re.findall(r"solution1|solution2|solution3|solution4|solution5", sentence_)
     elif dataset in ["social_i_qa", "ARC-Challenge", "ARC-Easy", "openbookqa"]:
         pred_answers = re.findall(r"answer1|answer2|answer3|answer4|answer5", sentence_)
     elif dataset == "hellaswag":

@@ -30,7 +30,6 @@ try:
 except:  # noqa: E722
     pass
 
-
 def main():
 
     args = parse_args()
@@ -39,6 +38,7 @@ def main():
 
     dataset = load_dataset("json", data_files=f"dataset/{args.dataset}/test.json")
     tokenizer, peft_model = load_model(args)
+    #peft_model.eval()
 
     # tokenizer.pad_token_id = tokenizer.unk_token_id
     # tokenizer.padding_side = "left"
@@ -144,7 +144,7 @@ def create_dir(dir_path):
 
 def generate_prompt(instruction, input=None):
     if input:
-        return f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.'
 
                 ### Instruction:
                 {instruction}
@@ -155,7 +155,7 @@ def generate_prompt(instruction, input=None):
                 ### Response:
                 """  # noqa: E501
     else:
-        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request. 
+        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.'
 
                 ### Instruction:
                 {instruction}
@@ -172,7 +172,7 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--model", choices=["llama_8b", "gemma_9b", "mistral_7b"], required=True
+        "--model", choices=["llama_8b", "gemma_9b", "mistral_7b", "gemma_2b"], required=True
     )
 
     parser.add_argument(
