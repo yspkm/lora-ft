@@ -10,4 +10,4 @@ pip3 install --upgrade pip wheel setuptools
 pip3 install torch --index-url https://download.pytorch.org/whl/cu121
 pip3 install transformers datasets accelerate sentencepiece tiktoken
 pip3 install fire gradio bitsandbytes appdirs black black[jupyter] einops matplotlib tqdm torchinfo tensorboard wandb pandas numpy pytest
-pip3 install ipywidgets ipykernel jupyterlab
+pip3 install ipywidgets ipykernel jupyterlab tabulate
