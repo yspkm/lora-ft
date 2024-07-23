@@ -2,9 +2,14 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import concurrent.futures
 
 models = {
-    "BASE_MODEL_LLAMA_8B": "meta-llama/Meta-Llama-3-8B-Instruct",
-    "BASE_MODEL_GEMMA_9B": "google/gemma-2-9b-it",
-    "BASE_MODEL_MISTRAL_7B": "mistralai/Mistral-7B-Instruct-v0.3",
+    #"BASE_MODEL_LLAMA_8B": "meta-llama/Meta-Llama-3-8B-Instruct",
+    #"BASE_MODEL_GEMMA_9B": "google/gemma-2-9b-it",
+    #"BASE_MODEL_MISTRAL_7B": "mistralai/Mistral-7B-Instruct-v0.3",
+    #"BASE_MODEL_LLAMA_8B": "meta-llama/Meta-Llama-3-8B",
+    #"BASE_MODEL_GEMMA_9B": "google/gemma-2-9b",
+    #"BASE_MODEL_MISTRAL_7B": "mistralai/Mistral-7B-v0.3",
+    "BASE_MODEL_GEMMA_2B_IT": "google/gemma-2b-it",
+    "BASE_MODEL_GEMMA_2B": "google/gemma-2b",
 }
 
 

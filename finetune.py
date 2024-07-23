@@ -13,7 +13,8 @@ from peft import (  # noqa: E402
     LoraConfig,
     get_peft_model,
     get_peft_model_state_dict,
-    prepare_model_for_kbit_training,
+    # prepare_model_for_kbit_training,
+    prepare_model_for_int8_training,
     set_peft_model_state_dict,
 )
 
@@ -113,11 +114,12 @@ def train(
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
         load_in_8bit=load_8bit,
+        #torch_dtype=torch.float16,
         torch_dtype=torch_dtype,
-        # device_map="auto",
+        #device_map="auto",
         device_map=device_map,
         trust_remote_code=True,
-        attn_implementation="eager" if "gemma" in base_model.lower() else "sdpa",
+        #attn_implementation="eager" if "gemma" in base_model.lower() else "sdpa",
     )
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
     tokenizer.pad_token_id = 0  # unk. we want this to be different from the eos token
@@ -130,7 +132,8 @@ def train(
             prompt,
             truncation=True,
             max_length=cutoff_len,
-            padding=False,
+            padding=False,  # 이후에 collator로 설정
+            # padding='max_length',  # padding을 max_length로 설정
             return_tensors=None,
         )
         if (
@@ -167,6 +170,9 @@ def train(
     # model = prepare_model_for_kbit_training(
     #    model, use_gradient_checkpointing=use_gradient_checkpointing
     # )
+    model = prepare_model_for_int8_training(
+        model, use_gradient_checkpointing=use_gradient_checkpointing
+    )
     config = LoraConfig(
         r=lora_r,
         lora_alpha=lora_alpha,
@@ -219,7 +225,7 @@ def train(
         model=model,
         train_dataset=train_data,
         eval_dataset=val_data,
-        compute_metrics=compute_metrics,
+        # compute_metrics=compute_metrics,
         args=transformers.TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
@@ -241,10 +247,10 @@ def train(
             group_by_length=group_by_length,
             report_to="wandb" if use_wandb else None,
             run_name=wandb_run_name if use_wandb else None,
-            hub_model_id=f"{base_model.split('/')[-1]}-{adapter_name}-{output_dir.split('/')[-1]}",
+            hub_model_id=f"{base_model.split('/')[-1]}-{adapter_name}-{output_dir.split('/')[-1]}{'-int8' if load_8bit else ''}",
             hub_token=get_huggingface_token(),
-            #eval_on_start=True,
-            push_to_hub=True,
+            # eval_on_start=True,
+            # push_to_hub=True,
         ),
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
@@ -259,7 +265,6 @@ def train(
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     model.save_pretrained(output_dir)
-
     trainer.push_to_hub(
         commit_message="Training completed!",
         # repo_name=f"{base_model.split('/')[-1]}-{adapter_name}-{output_dir.split('/')[-1]}",
@@ -297,7 +302,7 @@ def get_huggingface_token(config_file_path: str = "config.yaml"):
 
 
 def generate_prompt(data_point):
-    # sorry about the formatting disaster gotta move fast
+
     if data_point["input"]:
         return f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. 
 
@@ -317,6 +322,7 @@ def generate_prompt(data_point):
                 
                 ### Response:
                 {data_point["output"]}"""  # noqa: E501
+
 
 if __name__ == "__main__":
     fire.Fire(train)

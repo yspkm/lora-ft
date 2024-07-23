@@ -5,9 +5,13 @@ from datetime import datetime
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 MODELS = {
-    "llama_8b": "meta-llama/Meta-Llama-3-8B-Instruct",
-    "mistral_7b": "mistralai/Mistral-7B-Instruct-v0.3",
-    "gemma_9b": "google/gemma-2-9b-it",
+    #"llama_8b": "meta-llama/Meta-Llama-3-8B",
+    #"mistral_7b": "mistralai/Mistral-7B-v0.3",
+    #"gemma_9b": "google/gemma-2-9b",
+    #"llama_8b": "meta-llama/Meta-Llama-3-8B-Instruct",
+    #"mistral_7b": "mistralai/Mistral-7B-Instruct-v0.3",
+    #"gemma_9b": "google/gemma-2-9b-it",
+    'gemma_2b': "google/gemma-2b-it"
 }
 
 DATASETS = {
@@ -20,30 +24,35 @@ OUTPUT_DIRS = {
     "llama_8b_commonsense": "trained_models/llama/commonsense",
     "gemma_9b_math": "trained_models/gemma/math",
     "gemma_9b_commonsense": "trained_models/gemma/commonsense",
+    "gemma_2b_math": "trained_models/gemma2b/math",
+    "gemma_2b_commonsense": "trained_models/gemma2b/commonsense",
     "mistral_7b_math": "trained_models/mistral/math",
     "mistral_7b_commonsense": "trained_models/mistral/commonsense",
 }
 
 TRAINING_CONFIG = {
     "batch_size": 128,
-    "micro_batch_size": 16,
+    #"micro_batch_size": 16,
+    "micro_batch_size": 8,
+    #"micro_batch_size": 32,
     "num_epochs": 3,
     "learning_rate": 1e-4,
     "cutoff_len": 256,
-    "val_set_size": 120,
+    "val_set_size": 128,
     "adapter_name": "lora",
     "lr_scheduler_type": "cosine",
     "lora_r": 32,
     "lora_alpha": 64,
     "lora_dropout": 0.5,
     "lora_target_modules": '["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"]',
-    "wandb_project": "inception_lora",
+    "wandb_project": "PrunePath-LoRA",
     "wandb_watch": "all",
     "wandb_log_model": "false",
-    # wandb.watch메트릭 업로드 시간 때문에 싱클르 위해 10에서 20으로 늘림
+    # wandb.watch메트릭 업로드 시간 때문에 싱크를 위해 10에서 20으로 늘림
     "logging_steps": 20,
     "eval_step": 200,
     "save_step": 200,
+    "load_8bit": False,
 }
 CUR_DATETIME = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -58,8 +67,9 @@ def train_model(model_name, base_model, data_path, output_dir):
     )
     # fmt: off
     command = [
-        "CUDA_VISIBLE_DEVICES=0,1,2,3",
-        "python3",
+        #"CUDA_VISIBLE_DEVICES=0,1,2,3",
+        #"python3",
+        "WORLD_SIZE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 --master_port=3192",
         "finetune.py",
         "--lora_r", str(TRAINING_CONFIG["lora_r"]),
         "--lora_alpha", str(TRAINING_CONFIG["lora_alpha"]),
@@ -83,6 +93,7 @@ def train_model(model_name, base_model, data_path, output_dir):
         "--logging_steps", str(TRAINING_CONFIG["logging_steps"]),
         "--eval_step", str(TRAINING_CONFIG["eval_step"]),
         "--save_step", str(TRAINING_CONFIG["save_step"]),
+        "--load_8bit", str(TRAINING_CONFIG["load_8bit"]),
     ]
     # fmt: on
     command_str = " ".join(command)
