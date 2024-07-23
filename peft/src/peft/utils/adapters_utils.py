@@ -1,7 +1,3 @@
-# flake8: noqa
-# There's no way to ignore "F401 '...' imported but unused" warnings in this
-# module, but to preserve other warnings. So, don't check this module at all
-
 # coding=utf-8
 # Copyright 2023-present the HuggingFace Inc. team.
 #
@@ -16,9 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+WEIGHTS_NAME = "adapter_model.bin"
+CONFIG_NAME = "adapter_config.json"
 
-from .lora import LoraConfig, LoraModel
-from .bottleneck import BottleneckConfig, BottleneckModel
-from .p_tuning import PromptEncoder, PromptEncoderConfig, PromptEncoderReparameterizationType
-from .prefix_tuning import PrefixEncoder, PrefixTuningConfig
-from .prompt_tuning import PromptEmbedding, PromptTuningConfig, PromptTuningInit
+# TODO: add automapping and superclass here?
